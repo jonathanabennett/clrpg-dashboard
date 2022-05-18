@@ -1,4 +1,5 @@
 ;;;; package.lisp
 
 (defpackage #:clrpg-dashboard
-  (:use #:cl))
+  (:use #:clim :clim-lisp)
+  (:export run-dashboard))
