@@ -2,39 +2,59 @@
 
 (in-package #:clrpg-dashboard)
 
-(defstruct die-code
-  dice
-  sides
-  mod)
+(defclass roll ()
+  ((descriptor
+    :initarg :descriptor
+    :accessor descriptor)
+   (target
+    :initarg :target
+    :accessor target)
+   (dice
+    :initarg :dice
+    :initform (make-instance 'raw-dice :dice 3 :mods 0)
+    :accessor dice)))
 
-(defun roll (dice mods)
+(defclass raw-dice ()
+    ((num-dice
+      :initarg :num-dice
+      :accessor num-dice)
+     (mods
+      :initarg :mods
+      :initform 0
+      :accessor mods))
+  (:documentation "Class for rolls."))
+
+(defun string-to-raw-dice (string)
+  (let ((dice (or (parse-integer string :junk-allowed t) 1))
+        (mods (cond
+                ((position #\+ string :test #'char-equal)
+                 (setf mods (parse-integer string :start (position #\+ string :test #'char-equal) :junk-allowed t)))
+                ((position #\- string :test #'char-equal)
+                 (setf mods (parse-integer string :start (position #\- string :test #'char-equal) :junk-allowed t)))
+                (t
+                 (setf mods 0)))))
+    (make-instance 'raw-dice
+                   :dice dice
+                   :mods mods)))
+
+(defmethod print-object ((roll raw-dice) stream)
+  (with-slots (num-dice mods) roll
+    (cond
+      ((= mods 0) (format stream "~aD" num-dice))
+      ((< mods 0) (format stream "~aD~a" num-dice mods))
+      ((> mods 0) (format stream "~aD+~a" num-dice mods)))))
+
+(defmethod roll ((roll raw-dice) mods)
   (let ((sum 0))
-    (dotimes (i (die-code-dice dice) sum)
-      (setf sum (+ sum (1+ (random (die-code-sides dice))))))
-    (incf sum (die-code-mod dice))
+    (dotimes (i (num-dice roll) sum)
+      (setf sum (+ sum (1+ (random 6)))))
+    (incf sum (mods roll))
     (incf sum mods)
     sum))
 
-(defun string-to-die-code (string)
-  (let ((dice (or (parse-integer string :junk-allowed t) 1))
-        (sides (or (parse-integer string :start (1+ (position #\D string :test #'char-equal)) :junk-allowed t) 6))
-        (mods (cond
-               ((position #\+ string :test #'char-equal)
-                (setf mods (parse-integer string :start (position #\+ string :test #'char-equal) :junk-allowed t)))
-               ((position #\- string :test #'char-equal)
-                (setf mods (parse-integer string :start (position #\- string :test #'char-equal) :junk-allowed t)))
-               (t
-                (setf mods 0)))))
-    (make-die-code :dice dice :sides sides :mod mods)))
-
-(defun output-die-code (die-code)
-  (cond
-    ((= 0 (die-code-mod die-code)) (format t "~aD~a" (die-code-dice die-code) (die-code-sides die-code)))
-    ((> 0 (die-code-mod die-code)) (format t "~aD~a~a" (die-code-dice die-code) (die-code-sides die-code) (die-code-mod die-code)))
-    ((< 0 (die-code-mod die-code)) (format t "~aD~a+~a" (die-code-dice die-code) (die-code-sides die-code) (die-code-mod die-code)))))
-
 (define-application-frame dashboard ()
-  ()
+  ((die-lists :initform '()
+             :accessor die-lists))
   (:pointer-documentation t)
   (:panes
 
@@ -44,7 +64,7 @@
         ;; When should this pane be displayed in the command loop.
         ;; Note that the refresh is pane-specific, not
         ;; application-wide.
-        :display-time nil
+        :display-function 'display-app
         :height 400
         :width 600)
 
@@ -59,10 +79,17 @@
    (default (vertically ()
               app int))))
 
+(defun display-app (frame pane)
+  (format pane "~{~a~%~}" (die-lists *application-frame*)))
+
+(define-presentation-type raw-dice-string ()
+  :inherit-from 'string)
 ;;
 ;; Let's also define commands that will act on the application.
 ;;
 
+(define-dashboard-command (com-add-die-code :name t) ((raw-dice-string 'string))
+  (push (string-to-raw-dice raw-dice-string) (die-lists *application-frame*)))
 ;; How to leave the application.
 ;; Note the '-superapp-' part of the command definition, coming from
 ;; the name of the application frame.
